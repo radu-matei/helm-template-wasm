@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Go wasm</title>
+  </head>
+
+  <body>
+    <!-- Load wasm_exec.js -->
+    <script src="wasm_exec.js"></script>
+
+    <!-- Add a default chart after the page loads -->
+    <script>
+      window.onload = function() {
+        var defaultMetadata = `
+apiVersion: v1
+description: A Helm chart for Kubernetes
+name: subchart1
+version: 0.1.0
+      `;
+
+        var defaultTemplate = `
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Chart.Name }}
+  labels:
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    namespace: "{{ .Release.Namespace }}"
+    release-name: "{{ .Release.Name }}"
+    release-is-upgrade: "{{ .Release.IsUpgrade }}"
+    release-is-install: "{{ .Release.IsInstall }}"
+    kube-version/major: "{{ .Capabilities.KubeVersion.Major }}"
+    kube-version/minor: "{{ .Capabilities.KubeVersion.Minor }}"
+    kube-version/gitversion: "v{{ .Capabilities.KubeVersion.Major }}.{{ .Capabilities.KubeVersion.Minor }}.0"
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+  - port: {{ .Values.service.externalPort }}
+    targetPort: {{ .Values.service.internalPort }}
+    protocol: TCP
+    name: {{ .Values.service.name }}
+  selector:
+    app: {{ .Chart.Name }}
+      `;
+
+        var defaultValues = `
+service:
+  name: nginx
+  type: ClusterIP
+  externalPort: 80
+  internalPort: 80
+    `;
+
+        document.getElementById("metadata").value = defaultMetadata;
+        document.getElementById("templates").value = defaultTemplate;
+        document.getElementById("values").value = defaultValues;
+      };
+    </script>
+
+    <script>
+      if (!WebAssembly.instantiateStreaming) {
+        // polyfill
+        WebAssembly.instantiateStreaming = async (resp, importObject) => {
+          const source = await (await resp).arrayBuffer();
+          return await WebAssembly.instantiate(source, importObject);
+        };
+      }
+
+      const go = new Go();
+      let mod, inst;
+      WebAssembly.instantiateStreaming(fetch("lib.wasm"), go.importObject).then(
+        async result => {
+          mod = result.module;
+          inst = result.instance;
+          await go.run(inst);
+        }
+      );
+    </script>
+
+    Metadata:
+    <textarea id="metadata" cols="50" rows="10" charswidth="100"></textarea>
+    <br />
+    Templates:
+    <textarea id="templates" cols="50" rows="20" charswidth="100"></textarea>
+    <br />
+    Values:
+    <textarea id="values" cols="50" rows="20" charswidth="100"></textarea>
+
+    <button
+      onClick="render('templates', 'values', 'result');"
+      id="renderButton"
+    >
+      Render
+    </button>
+    <br />
+    Result:
+    <textarea id="result" cols="50" rows="20" charswidth="100"></textarea>
+  </body>
+</html>
